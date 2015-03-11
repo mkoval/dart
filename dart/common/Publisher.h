@@ -53,7 +53,7 @@ public:
   /// Destructor will notify all Subscribers that it is destructing
   virtual ~Publisher();
 
-protected:
+public:
 
   /// Send a notification to all Subscribers
   void sendNotification(int _notice) const;

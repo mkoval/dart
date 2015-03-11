@@ -34,14 +34,137 @@
  *   POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <functional>
+
 #include <gtest/gtest.h>
+#include <boost/signals2.hpp>
+#include <boost/signals2/signal_type.hpp>
 
 #include "dart/common/sub_ptr.h"
+#include "dart/common/Signal.h"
+#include "dart/common/Timer.h"
 #include "dart/dynamics/SimpleFrame.h"
 #include "dart/dynamics/BoxShape.h"
 
 using namespace dart;
 using namespace dynamics;
+
+namespace bs2 = boost::signals2;
+using namespace bs2::keywords;
+using bs2::dummy_mutex;
+using bs2::signal_type;
+
+enum Notification { TALKER_SOMETHING_UPDATED };
+
+size_t foo()
+{
+  size_t sum = 0;
+  for (size_t i = 0; i < 1e+1; ++i)
+    sum += i;
+  return sum;
+}
+
+class Listener;
+class Talker;
+
+class Listener : public common::Subscriber
+{
+public:
+  Listener() : common::Subscriber() { }
+  virtual ~Listener() {}
+
+  virtual void receiveNotification(const common::Publisher* _subscription,
+                                   int _notice)
+  {
+    if (_notice == TALKER_SOMETHING_UPDATED) { foo(); }
+  }
+  void receiveNotificationSignal() { foo(); }
+};
+
+class Talker : public common::Publisher
+{
+public:
+  Talker() : common::Publisher() {}
+  virtual ~Talker() {}
+
+  void connect(Listener* _listener)
+  {
+    addSubscriber(_listener);
+    mSignal.connect(std::bind(&Listener::receiveNotificationSignal, _listener));
+    mBoostSignal.connect(boost::bind(&Listener::receiveNotificationSignal, _listener));
+    mBoostSignalDummyMutex.connect(boost::bind(&Listener::receiveNotificationSignal, _listener));
+  }
+
+  void updateSomethingPublisher() { sendNotification(TALKER_SOMETHING_UPDATED); }
+  void updateSomethingSignal() { mSignal.raise(); }
+  void updateSomethingBoostSignal() { mBoostSignal(); }
+  void updateSomethingBoostSignalDummyMutex() { mBoostSignalDummyMutex(); }
+
+protected:
+  typedef bs2::signal_type<void(), bs2::keywords::mutex_type<bs2::dummy_mutex> >::type signal_type;
+  bs2::signal<void()> mBoostSignal;
+  signal_type mBoostSignalDummyMutex;
+  common::Signal<void()> mSignal;
+};
+
+void testListeners(size_t _numTests, size_t _numListeners)
+{
+  common::Timer t;
+
+  Talker talker;
+  std::vector<Listener> listeners(_numListeners);
+
+  for (auto& listener : listeners)
+    talker.connect(&listener);
+
+  std::cout << "[ Number of listeners: " << _numListeners << "]" << std::endl;
+
+  t.start();
+  for (size_t i = 0; i < _numTests; ++i)
+  {
+    talker.updateSomethingPublisher();
+  }
+  t.stop();
+  std::cout << "Publisher                 : " << t.getLastElapsedTime() << std::endl;
+
+  t.start();
+  for (size_t i = 0; i < _numTests; ++i)
+  {
+    talker.updateSomethingSignal();
+  }
+  t.stop();
+  std::cout << "Signal                    : " << t.getLastElapsedTime() << std::endl;
+
+  t.start();
+  for (size_t i = 0; i < _numTests; ++i)
+  {
+    talker.updateSomethingBoostSignal();
+  }
+  t.stop();
+  std::cout << "Boost.Signal              : " << t.getLastElapsedTime() << std::endl;
+
+  t.start();
+  for (size_t i = 0; i < _numTests; ++i)
+  {
+    talker.updateSomethingBoostSignalDummyMutex();
+  }
+  t.stop();
+  std::cout << "Boost.Signal (dummy mutex): " << t.getLastElapsedTime() << std::endl;
+
+  std::cout << std::endl;
+}
+
+TEST(Subscriptions, PerformanceTest)
+{
+  const size_t numTests = 1e+5;
+
+  testListeners(numTests, 0);
+  testListeners(numTests, 1e+0);
+  testListeners(numTests, 1e+1);
+  testListeners(numTests, 1e+2);
+  testListeners(numTests, 1e+3);
+  testListeners(numTests, 1e+4);
+}
 
 TEST(Subscriptions, Notifications)
 {

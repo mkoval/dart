@@ -68,6 +68,7 @@ const std::string& Entity::setName(const std::string &_name)
 {
   mName = _name;
   sendNotification(NAME_CHANGED_NOTICE);
+  mNameChangedSignal.raise(this);
   return mName;
 }
 
@@ -81,6 +82,7 @@ const std::string& Entity::getName() const
 void Entity::addVisualizationShape(Shape* _p)
 {
   mVizShapes.push_back(_p);
+  mVisualizationChangedSignal.raise(this);
   sendNotification(VISUALIZATION_CHANGE_NOTICE);
 }
 
@@ -155,6 +157,7 @@ bool Entity::isQuiet() const
 void Entity::notifyTransformUpdate()
 {
   mNeedTransformUpdate = true;
+  mTransformChangedSignal.raise(this);
   sendNotification(TRANSFORM_NOTICE);
 }
 
@@ -168,6 +171,7 @@ bool Entity::needsTransformUpdate() const
 void Entity::notifyVelocityUpdate()
 {
   mNeedVelocityUpdate = true;
+  mVelocityChangedSignal.raise(this);
   sendNotification(VELOCITY_NOTICE);
 }
 
@@ -188,6 +192,48 @@ void Entity::notifyAccelerationUpdate()
 bool Entity::needsAccelerationUpdate() const
 {
   return mNeedAccelerationUpdate;
+}
+
+//==============================================================================
+Entity::FrameChnagedConnection Entity::addSlotFrameChanged(
+    const Entity::FrameChnagedSlotType& _slot)
+{
+  return mFrameChangedSignal.connect(_slot);
+}
+
+//==============================================================================
+Entity::NameChnagedConnection Entity::addSlotNameChanged(
+    const Entity::NameChnagedSlotType& _slot)
+{
+  return mNameChangedSignal.connect(_slot);
+}
+
+//==============================================================================
+Entity::VisualizationChnagedConnection Entity::addSlotVisualizationChanged(
+    const Entity::VisualizationChnagedSlotType& _slot)
+{
+  return mVisualizationChangedSignal.connect(_slot);
+}
+
+//==============================================================================
+Entity::TransformChnagedConnection Entity::addSlotTransformChanged(
+    const Entity::TransformChnagedSlotType& _slot)
+{
+  return mTransformChangedSignal.connect(_slot);
+}
+
+//==============================================================================
+Entity::VelocityChnagedConnection Entity::addSlotVelocityChanged(
+    const Entity::VelocityChnagedSlotType& _slot)
+{
+  return mVelocityChangedSignal.connect(_slot);
+}
+
+//==============================================================================
+Entity::AccelerationChnagedConnection Entity::addSlotAccelerationChanged(
+    const Entity::AccelerationChnagedSlotType& _slot)
+{
+  return mAccelerationChangedSignal.connect(_slot);
 }
 
 //==============================================================================
@@ -221,6 +267,7 @@ void Entity::changeParentFrame(Frame* _newParentFrame)
   }
 
   sendNotification(FRAME_CHANGED_NOTICE);
+  mFrameChangedSignal.raise(this);
 }
 
 //==============================================================================
