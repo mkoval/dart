@@ -43,6 +43,8 @@
 #include <iostream>
 #include <limits>
 #include <vector>
+#include <map>
+#include <queue>
 
 namespace dart {
 namespace common {
@@ -55,86 +57,161 @@ template <typename T> struct DefaultCombiner;
 }  // namespace detail
 }  // namespace signal
 
-template <typename _Signature, template<class> class Combiner = signal::detail::DefaultCombiner>
-class Signal;
+class SignalBase;
 
-/// Non-thread safe implementation of Signal for general slots
-template <typename _Res, typename... _ArgTypes, template<class> class Combiner>
-class Signal<_Res(_ArgTypes...), Combiner>
+/// class Connection
+class Connection
 {
 public:
-  using ResultType = _Res;
-  using SlotType   = std::function<ResultType(_ArgTypes...)>;
-
-  class Connection;
-  friend class Connection;
+  /// Default constructor
+  Connection();
 
   /// Constructor
-  Signal() {}
+  Connection(SignalBase* _signal, size_t _id);
 
   /// Destructor
-  ~Signal() {}
+  ~Connection();
+
+  /// Get id
+  size_t getId() const;
+
+  /// Get true if the slot is connected
+  bool isConnected() const;
+
+  /// Disconnect the connection
+  void disconnect();
+
+protected:
+  /// True if disconnect() has not been called
+  bool mIsConnected;
+
+  /// Signal
+  SignalBase* mSignal;
+
+  /// Unique ID of the connection
+  size_t mId;
+};
+
+/// class SignalBase
+class SignalBase
+{
+public:
+  friend class Connection;
+
+  /// Default constructor
+  SignalBase();
+
+  /// Destructor
+  virtual ~SignalBase();
+
+  /// Disconnect given connection
+  void disconnect(const Connection& _connection);
+
+protected:
+  /// Disconnect given connection ID
+  virtual void disconnect(size_t _id) = 0;
+};
+
+template <typename _Signature,
+          template<class> class Combiner = signal::detail::DefaultCombiner>
+class Signal;
+
+/// Signal implements a signal/slot mechanism
+template <typename _Res, typename... _ArgTypes, template<class> class Combiner>
+class Signal<_Res(_ArgTypes...), Combiner> : public SignalBase
+{
+public:
+  using ResultType    = _Res;
+  using SlotType      = std::function<ResultType(_ArgTypes...)>;
+  using ConnectionMap = std::map<size_t, SlotType>;
+  using SignalType    = Signal<_Res(_ArgTypes...), Combiner>;
+
+  /// Constructor
+  Signal() : SignalBase() {}
+
+  /// Destructor
+  virtual ~Signal() {}
 
   /// Connect a slot to the signal
   Connection connect(const SlotType& _slot)
   {
-    const SlotType* slotPtr = new SlotType(_slot);
+    const size_t index = issueUniqueId();
 
-    mSlots.push_back(slotPtr);
+    mConnections[index] = _slot;
 
-    return Connection(this, slotPtr);
+    return Connection(this, index);
   }
 
   /// Connect another signal
-  Connection connect(Signal<ResultType(_ArgTypes...), Combiner>* _signal)
+  /// \warning Be cautious to cyclic connections
+  Connection connect(SignalType* _signal)
   {
+    // Check self connection
     if (this == _signal)
       return Connection();
 
     using std::placeholders::_1;
-    return connect(std::bind(std::mem_fn(&Signal<ResultType(_ArgTypes...), Combiner>::raise), _signal, _1));
+    return connect(std::bind(std::mem_fn(&SignalType::raise), _signal, _1));
   }
 
   /// Connect another signal
-  Connection connect(const Signal<ResultType(_ArgTypes...), Combiner>& _signal)
-  {
-    if (this == &_signal)
-      return;
-
-    using std::placeholders::_1;
-    return connect(std::bind(std::mem_fn(&Signal<ResultType(_ArgTypes...), Combiner>::raise), &_signal, _1));
-  }
+  /// \warning Be cautious to cyclic connections
+  Connection connect(const SignalType& _signal) { return connect(&_signal); }
 
   // Note: To implement void disconnect(const SlotType&) function,
   // std::function should provide == operator, which is not included in C++11
   // In the meantime, we use Connection to disconnect slots.
 
-  /// Disconnect all the slots
+  /// Disconnect all the connections
   void disconnectAll()
   {
-    for (const auto& slot : mSlots)
-      delete slot;
+    flushDisconnections();
 
-    mSlots.clear();
+    for (const auto& connection : mConnections)
+      disconnect(connection.first);
   }
 
-  /// Return the number of slots
-  size_t getNumSlots() const { return mSlots.size(); }
+  /// Flush all the disconnected connections
+  void flushDisconnections()
+  {
+    if (mConnectionsToBeDisconnected.empty())
+      return;
 
-  /// Raise signal
+    for (const auto& id : mConnectionsToBeDisconnected)
+    {
+      const auto& connectionPair = mConnections.find(id);
+
+      // If the connection of the ID exists in the list of connections
+      if (mConnections.end() != connectionPair)
+      {
+        // Save the ID as free ID
+        mFreeIds.push(connectionPair->first);
+        mConnections.erase(connectionPair);
+      }
+    }
+
+    mConnectionsToBeDisconnected.clear();
+  }
+
+  /// Get the number of connections
+  size_t getNumConnections() const { return mConnections.size(); }
+
+  /// Raise the signal
   ResultType raise(const _ArgTypes&... _args)
   {
-    std::vector<ResultType> res(mSlots.size());
+    flushDisconnections();
 
-    size_t i = 0;
-    for (const auto& slot : mSlots)
-      res[i++] = (*slot)(_args...);
+    std::vector<ResultType> res(mConnections.size());
+
+    size_t index = 0;
+    for (const auto& connection : mConnections)
+      res[index++] = (connection.second)(_args...);
 
     Combiner<ResultType> getResult;
     return getResult(res.begin(), res.end());
   }
 
-  /// Invoke the signal
+  /// Raise the signal
   template <class ...Args>
   ResultType operator()(const _ArgTypes&... _args)
   {
@@ -142,227 +219,190 @@ public:
   }
 
 protected:
-  /// Disconnect
-  void disconnect(const SlotType* _slotPtr)
+  // Documentation inherited
+  virtual void disconnect(size_t _id) override
   {
-    const auto& res
-        = std::find(mSlots.begin(), mSlots.end(), _slotPtr);
-
-    if (mSlots.end() == res)
-      return;
-
-    mSlots.erase(
-          std::remove(mSlots.begin(), mSlots.end(), _slotPtr));
-
-    delete _slotPtr;
+    mConnectionsToBeDisconnected.push_back(_id);
   }
 
 private:
-  /// List of slots
-  std::vector<const SlotType*> mSlots;
-
-public:
-  /// Connection provides useful feature
-  class Connection
+  /// Issue unique ID for new connection
+  size_t issueUniqueId()
   {
-  public:
-    /// Default constructor
-    Connection()
-      : mIsConnected(false),
-        mSignal(nullptr),
-        mSlotPtr(nullptr) {}
+    // Check the capacity
+    assert(mConnections.size() <= std::numeric_limits<size_t>::max());
 
-    /// Constructor
-    Connection(Signal<ResultType(_ArgTypes...), Combiner>* _signal, const SlotType* _slotPtr)
-      : mIsConnected(true),
-        mSignal(_signal),
-        mSlotPtr(_slotPtr) {}
-
-    /// Destructor
-    ~Connection() {}
-
-    /// Get true if the slot is connected
-    bool connected() const
+    if (!mFreeIds.empty())
     {
-      if (nullptr == mSignal || nullptr == mSlotPtr)
-        return false;
-
-      return mIsConnected;
+      const size_t uniqueId = mFreeIds.front();
+      mFreeIds.pop();
+      return uniqueId;
     }
 
-    /// Disconnect the slot
-    void disconnect()
-    {
-      if (!connected())
-        return;
+    size_t uniqueId = 0;
 
-      mSignal->disconnect(mSlotPtr);
-      mIsConnected = false;
+    if (!mConnections.empty())
+    {
+      const auto& it = mConnections.rbegin();
+      uniqueId = it->first + 1;
     }
 
-  protected:
-    /// True
-    bool mIsConnected;
+    return uniqueId;
+  }
 
-    /// Signal
-    Signal<ResultType(_ArgTypes...), Combiner>* mSignal;
+private:
+  /// Connection map
+  ConnectionMap mConnections;
 
-    /// Slot
-    const SlotType* mSlotPtr;
-  };
+  /// List of IDs whose connection will be disconnedted in the next raise
+  std::vector<size_t> mConnectionsToBeDisconnected;
+
+  /// Free IDs
+  std::queue<size_t> mFreeIds;
 };
 
-/// Non-thread safe implementation of Signal for slots not returning value
+/// Signal implements a signal/slot mechanism for the slots don't return a value
 template <typename... _ArgTypes>
-class Signal<void(_ArgTypes...)>
+class Signal<void(_ArgTypes...)> : public SignalBase
 {
 public:
   using SlotType = std::function<void(_ArgTypes...)>;
-
-  class Connection;
-  friend class Connection;
+  using ConnectionMap = std::map<size_t, SlotType>;
+  using SignalType = Signal<void(_ArgTypes...)>;
 
   /// Constructor
-  Signal() {}
+  Signal() : SignalBase() {}
 
   /// Destructor
-  ~Signal() {}
+  virtual ~Signal() {}
 
   /// Connect a slot to the signal
   Connection connect(const SlotType& _slot)
   {
-    const SlotType* slotPtr = new SlotType(_slot);
+    const size_t index = issueUniqueId();
 
-    mSlots.push_back(slotPtr);
+    mConnections[index] = _slot;
 
-    return Connection(this, slotPtr);
+    return Connection(this, index);
   }
 
   /// Connect another signal
-  Connection connect(Signal<void(_ArgTypes...)>* _signal)
+  /// \warning Be cautious to cyclic connections
+  Connection connect(SignalType* _signal)
   {
+    // Check self connection
     if (this == _signal)
       return Connection();
 
     using std::placeholders::_1;
-    return connect(std::bind(std::mem_fn(&Signal<void(_ArgTypes...)>::raise), _signal, _1));
+    return connect(std::bind(std::mem_fn(&SignalType::raise), _signal, _1));
   }
 
   /// Connect another signal
-  Connection connect(const Signal<void(_ArgTypes...)>& _signal)
-  {
-    if (this == &_signal)
-      return;
-
-    using std::placeholders::_1;
-    return connect(std::bind(std::mem_fn(&Signal<void(_ArgTypes...)>::raise), &_signal, _1));
-  }
+  /// \warning Be cautious to cyclic connections
+  Connection connect(const SignalType& _signal) { return connect(&_signal); }
 
   // Note: To implement void disconnect(const SlotType&) function,
   // std::function should provide == operator, which is not included in C++11
   // In the meantime, we use Connection to disconnect slots.
 
-  /// Disconnect all the slots
+  /// Disconnect all the connections
   void disconnectAll()
   {
-    for (const auto& slot : mSlots)
-      delete slot;
+    flushDisconnections();
 
-    mSlots.clear();
+    for (const auto& connection : mConnections)
+      disconnect(connection.first);
   }
 
-  /// Return the number of slots
-  size_t getNumSlots() const { return mSlots.size(); }
+  /// Flush all the disconnected connections
+  void flushDisconnections()
+  {
+    if (mConnectionsToBeDisconnected.empty())
+      return;
 
-  /// Raise signal
+    for (const auto& id : mConnectionsToBeDisconnected)
+    {
+      const auto& connectionPair = mConnections.find(id);
+
+      // If the connection of the ID exists in the list of connections
+      if (mConnections.end() != connectionPair)
+      {
+        // Save the ID as free ID
+        mFreeIds.push(connectionPair->first);
+        mConnections.erase(connectionPair);
+      }
+    }
+
+    mConnectionsToBeDisconnected.clear();
+  }
+
+  /// Get the number of connections
+  size_t getNumConnections() const { return mConnections.size(); }
+
+  /// Raise the signal
   void raise(const _ArgTypes&... _args)
   {
-    for (const auto& slot : mSlots)
-      (*slot)(_args...);
+    flushDisconnections();
+
+    for (const auto& connection : mConnections)
+      (connection.second)(_args...);
   }
 
-  /// Invoke the signal
+  /// Raise the signal
   template <class ...Args>
   void operator()(const _ArgTypes&... _args)
   {
     raise(_args...);
   }
 
-  protected:
-  /// Disconnect
-  void disconnect(const SlotType* _slotPtr)
+protected:
+  // Documentation inherited
+  virtual void disconnect(size_t _id) override
   {
-    const auto& res
-        = std::find(mSlots.begin(), mSlots.end(), _slotPtr);
-
-    if (mSlots.end() == res)
-      return;
-
-    mSlots.erase(
-          std::remove(mSlots.begin(), mSlots.end(), _slotPtr));
-
-    delete _slotPtr;
+    mConnectionsToBeDisconnected.push_back(_id);
   }
 
-  private:
-  /// List of slots
-  std::vector<const SlotType*> mSlots;
-
-  public:
-  /// Connection provides useful feature
-  class Connection
+private:
+  /// Issue unique ID for new connection
+  size_t issueUniqueId()
   {
-  public:
-    /// Default constructor
-    Connection()
-      : mIsConnected(false),
-        mSignal(nullptr),
-        mSlotPtr(nullptr) {}
+    // Check the capacity
+    assert(mConnections.size() <= std::numeric_limits<size_t>::max());
 
-    /// Constructor
-    Connection(Signal<void(_ArgTypes...)>* _signal, const SlotType* _slotPtr)
-      : mIsConnected(true),
-        mSignal(_signal),
-        mSlotPtr(_slotPtr) {}
-
-    /// Destructor
-    ~Connection() {}
-
-    /// Get true if the slot is connected
-    bool connected() const
+    if (!mFreeIds.empty())
     {
-      if (nullptr == mSignal || nullptr == mSlotPtr)
-        return false;
-
-      return mIsConnected;
+      const size_t uniqueId = mFreeIds.front();
+      mFreeIds.pop();
+      return uniqueId;
     }
 
-    /// Disconnect the slot
-    void disconnect()
-    {
-      if (!connected())
-        return;
+    size_t uniqueId = 0;
 
-      mSignal->disconnect(mSlotPtr);
-      mIsConnected = false;
+    if (!mConnections.empty())
+    {
+      const auto& it = mConnections.rbegin();
+      uniqueId = it->first + 1;
     }
 
-  protected:
-    /// True
-    bool mIsConnected;
+    return uniqueId;
+  }
 
-    /// Signal
-    Signal<void(_ArgTypes...)>* mSignal;
+private:
+  /// Connection map
+  ConnectionMap mConnections;
 
-    /// Slot
-    const SlotType* mSlotPtr;
-  };
+  /// List of IDs whose connection will be disconnedted in the next raise
+  std::vector<size_t> mConnectionsToBeDisconnected;
+
+  /// Free IDs
+  std::queue<size_t> mFreeIds;
 };
 
 namespace signal {
 namespace detail {
 
-/// Return the last result
+/// DefaultCombiner -- return the last result
 template <typename T>
 struct DefaultCombiner
 {

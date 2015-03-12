@@ -58,68 +58,123 @@ void foo2(int /*_val1*/, float /*_val2*/) { callCount2++; }
 class Viewer
 {
 public:
-  static void onEvent1Static(int /*_val*/) { callCount1++; }
-  static void onEvent2Static(int /*_val1*/, float /*_val2*/) { callCount2++; }
-  void onEvent1(int /*_val*/) { callCount1++; }
-  void onEvent2(int /*_val1*/, float /*_val2*/) { callCount2++; }
+  static void onSignal1Static(int /*_val*/) { callCount1++; }
+  static void onSignal2Static(int /*_val1*/, float /*_val2*/) { callCount2++; }
+  void onSignal1(int /*_val*/) { callCount1++; }
+  void onSignal2(int /*_val1*/, float /*_val2*/) { callCount2++; }
 };
 
 //==============================================================================
 TEST(Signal, Basic)
 {
-  Signal<void()> event0;
-  Signal<void(int)> event1;
-  Signal<void(int, float)> event2;
-  Signal<void()>::Connection connection0 = event0.connect(&foo0);
-  Signal<void(int)>::Connection connection1 = event1.connect(&foo1);
-  Signal<void(int, float)>::Connection connection2 = event2.connect(&foo2);
+  Signal<void()> signal0;
+  Signal<void(int)> signal1;
+  Signal<void(int, float)> signal2;
+  Connection connection0 = signal0.connect(&foo0);
+  Connection connection1 = signal1.connect(&foo1);
+  Connection connection2 = signal2.connect(&foo2);
 
-  EXPECT_EQ(event0.getNumSlots(), 1);
-  EXPECT_EQ(event1.getNumSlots(), 1);
-  EXPECT_EQ(event2.getNumSlots(), 1);
+  EXPECT_EQ(signal0.getNumConnections(), 1);
+  EXPECT_EQ(signal1.getNumConnections(), 1);
+  EXPECT_EQ(signal2.getNumConnections(), 1);
 
-  EXPECT_TRUE(connection0.connected());
-  EXPECT_TRUE(connection1.connected());
-  EXPECT_TRUE(connection2.connected());
+  EXPECT_TRUE(connection0.isConnected());
+  EXPECT_TRUE(connection1.isConnected());
+  EXPECT_TRUE(connection2.isConnected());
 
   connection0.disconnect();
   connection1.disconnect();
   connection2.disconnect();
-  EXPECT_EQ(event0.getNumSlots(), 0);
-  EXPECT_EQ(event1.getNumSlots(), 0);
-  EXPECT_EQ(event2.getNumSlots(), 0);
 
-  EXPECT_FALSE(connection0.connected());
-  EXPECT_FALSE(connection1.connected());
-  EXPECT_FALSE(connection2.connected());
+  // The connections are still exist in the signal as disconnected state.
+  // The disconnected connections will be removed when the signal raises or
+  // flushDisconnections() is explictly called.
+  EXPECT_EQ(signal0.getNumConnections(), 1);
+  EXPECT_EQ(signal1.getNumConnections(), 1);
+  EXPECT_EQ(signal2.getNumConnections(), 1);
+
+  signal0();
+  signal1.flushDisconnections();
+  signal2.flushDisconnections();
+
+  EXPECT_FALSE(connection0.isConnected());
+  EXPECT_FALSE(connection1.isConnected());
+  EXPECT_FALSE(connection2.isConnected());
+}
+
+//==============================================================================
+TEST(Signal, Id)
+{
+  Signal<void()> signal;
+  Connection connection0 = signal.connect(&foo0);
+  Connection connection1 = signal.connect(&foo0);
+  Connection connection2 = signal.connect(&foo0);
+
+  EXPECT_EQ(signal.getNumConnections(), 3);
+  EXPECT_TRUE(connection0.isConnected());
+  EXPECT_TRUE(connection1.isConnected());
+  EXPECT_TRUE(connection2.isConnected());
+
+  EXPECT_EQ(connection0.getId(), 0);
+  EXPECT_EQ(connection1.getId(), 1);
+  EXPECT_EQ(connection2.getId(), 2);
+
+  // As disconnecting, the ID of connection1 is returned to the signal as free
+  // ID to be assigned for new connection.
+  connection1.disconnect();
+  signal.flushDisconnections();
+
+  EXPECT_EQ(signal.getNumConnections(), 2);
+  EXPECT_TRUE(connection0.isConnected());
+  EXPECT_FALSE(connection1.isConnected());
+  EXPECT_TRUE(connection2.isConnected());
+
+  // connection1 still has the previous ID but it's meaningless.
+  EXPECT_EQ(connection0.getId(), 0);
+  EXPECT_EQ(connection1.getId(), 1);
+  EXPECT_EQ(connection2.getId(), 2);
+
+  // Since ID 1 is now available, connection will get ID 1.
+  Connection connection3 = signal.connect(&foo0);
+
+  EXPECT_EQ(signal.getNumConnections(), 3);
+  EXPECT_TRUE(connection0.isConnected());
+  EXPECT_FALSE(connection1.isConnected());
+  EXPECT_TRUE(connection2.isConnected());
+  EXPECT_TRUE(connection3.isConnected());
+
+  EXPECT_EQ(connection0.getId(), 0);
+  EXPECT_EQ(connection1.getId(), 1);
+  EXPECT_EQ(connection2.getId(), 2);
+  EXPECT_EQ(connection3.getId(), 1);
 }
 
 //==============================================================================
 TEST(Signal, NonStaticMemberFunction)
 {
-  Signal<void(int)> event1;
-  Signal<void(int, float)> event2;
+  Signal<void(int)> signal1;
+  Signal<void(int, float)> signal2;
   Viewer viewer;
 
   // Connect static member function
-  event1.connect(&Viewer::onEvent1Static);
-  event2.connect(&Viewer::onEvent2Static);
+  signal1.connect(&Viewer::onSignal1Static);
+  signal2.connect(&Viewer::onSignal2Static);
 
   // Connect non-static member function
   using std::placeholders::_1;
   using std::placeholders::_2;
-  event1.connect(std::bind(&Viewer::onEvent1, &viewer, _1));
-  event2.connect(std::bind(&Viewer::onEvent2, &viewer, _1, _2));
+  signal1.connect(std::bind(&Viewer::onSignal1, &viewer, _1));
+  signal2.connect(std::bind(&Viewer::onSignal2, &viewer, _1, _2));
 
-  // The event should have the maximum number of listeners
-  EXPECT_EQ(event1.getNumSlots(), 2);
-  EXPECT_EQ(event2.getNumSlots(), 2);
+  // The signal should have the maximum number of listeners
+  EXPECT_EQ(signal1.getNumConnections(), 2);
+  EXPECT_EQ(signal2.getNumConnections(), 2);
 
   // Check the number of calls
   callCount1 = 0;
   callCount2 = 0;
-  event1.raise(0);
-  event2.raise(0, 0);
+  signal1.raise(0);
+  signal2.raise(0, 0);
   EXPECT_EQ(callCount1, 2);
   EXPECT_EQ(callCount2, 2);
 }
@@ -180,47 +235,47 @@ TEST(Signal, ReturnValues)
 }
 
 //==============================================================================
-TEST(Signal, EventToEvent)
+TEST(Signal, SignalToSignal)
 {
-  Signal<void(int)> event1;
-  Signal<void(int)> event2;
+  Signal<void(int)> signal1;
+  Signal<void(int)> signal2;
 
-  Signal<void(int)>::Connection connection = event1.connect(&event2);
-  event2.connect(foo1);
-  event2.connect(foo1);
-  event2.connect(foo1);
-  event2.connect(foo1);
+  Connection connection = signal1.connect(&signal2);
+  signal2.connect(foo1);
+  signal2.connect(foo1);
+  signal2.connect(foo1);
+  signal2.connect(foo1);
 
-  event1.raise(0);
+  signal1.raise(0);
 
   // Check the number of calls
   callCount1 = 0;
-  event1.raise(0);
+  signal1.raise(0);
   EXPECT_EQ(callCount1, 4);
 
   // Check the number of calls
   callCount1 = 0;
-  event1(0);
+  signal1(0);
   EXPECT_EQ(callCount1, 4);
 
   connection.disconnect();
 
   // Check the number of calls
   callCount1 = 0;
-  event1.raise(0);
+  signal1.raise(0);
   EXPECT_EQ(callCount1, 0);
 
   // Check the number of calls
   callCount1 = 0;
-  event1(0);
+  signal1(0);
   EXPECT_EQ(callCount1, 0);
 
-  event1.disconnectAll();
-  EXPECT_EQ(event1.getNumSlots(), 0);
-  auto connection2 = event1.connect(&event1);
-  EXPECT_EQ(event1.getNumSlots(), 0);
-  EXPECT_FALSE(connection2.connected());
-  event1(0);
+  signal1.disconnectAll();
+  EXPECT_EQ(signal1.getNumConnections(), 0);
+  auto connection2 = signal1.connect(&signal1);
+  EXPECT_EQ(signal1.getNumConnections(), 0);
+  EXPECT_FALSE(connection2.isConnected());
+  signal1(0);
   EXPECT_EQ(callCount1, 0);
 }
 

@@ -87,12 +87,31 @@ public:
   Talker() : common::Publisher() {}
   virtual ~Talker() {}
 
-  void connect(Listener* _listener)
+  void connectPublisher(Listener* _listener)
   {
     addSubscriber(_listener);
+  }
+
+  void connectSignal(Listener* _listener)
+  {
     mSignal.connect(std::bind(&Listener::receiveNotificationSignal, _listener));
+  }
+
+  void connectBoostSignal(Listener* _listener)
+  {
     mBoostSignal.connect(boost::bind(&Listener::receiveNotificationSignal, _listener));
+  }
+
+  void connectBoostSignalDummyMutex(Listener* _listener)
+  {
     mBoostSignalDummyMutex.connect(boost::bind(&Listener::receiveNotificationSignal, _listener));
+  }
+
+  void clear()
+  {
+    mSignal.disconnectAll();
+    mBoostSignal.disconnect_all_slots();
+    mBoostSignalDummyMutex.disconnect_all_slots();
   }
 
   void updateSomethingPublisher() { sendNotification(TALKER_SOMETHING_UPDATED); }
@@ -107,7 +126,7 @@ protected:
   common::Signal<void()> mSignal;
 };
 
-void testListeners(size_t _numTests, size_t _numListeners)
+void testSendingSignals(size_t _numTests, size_t _numListeners)
 {
   common::Timer t;
 
@@ -115,7 +134,12 @@ void testListeners(size_t _numTests, size_t _numListeners)
   std::vector<Listener> listeners(_numListeners);
 
   for (auto& listener : listeners)
-    talker.connect(&listener);
+  {
+    talker.connectPublisher(&listener);
+    talker.connectSignal(&listener);
+    talker.connectBoostSignal(&listener);
+    talker.connectBoostSignalDummyMutex(&listener);
+  }
 
   std::cout << "[ Number of listeners: " << _numListeners << "]" << std::endl;
 
@@ -154,16 +178,79 @@ void testListeners(size_t _numTests, size_t _numListeners)
   std::cout << std::endl;
 }
 
+void testAddRemoveConnections(size_t _numTests, size_t _numListeners)
+{
+  common::Timer t;
+
+  Talker talker;
+  std::vector<Listener> listeners(_numListeners);
+
+  std::cout << "[ Number of listeners: " << _numListeners << "]" << std::endl;
+
+  talker.clear();
+  t.start();
+  for (size_t i = 0; i < _numTests; ++i)
+  {
+    for (auto& listener : listeners)
+      talker.connectPublisher(&listener);
+    talker.clear();
+  }
+  t.stop();
+  std::cout << "Publisher                 : " << t.getLastElapsedTime() << std::endl;
+
+  talker.clear();
+  t.start();
+  for (size_t i = 0; i < _numTests; ++i)
+  {
+    for (auto& listener : listeners)
+      talker.connectSignal(&listener);
+    talker.clear();
+  }
+  t.stop();
+  std::cout << "Signal                    : " << t.getLastElapsedTime() << std::endl;
+
+  talker.clear();
+  t.start();
+  for (size_t i = 0; i < _numTests; ++i)
+  {
+    for (auto& listener : listeners)
+      talker.connectBoostSignal(&listener);
+    talker.clear();
+  }
+  t.stop();
+  std::cout << "Boost.Signal              : " << t.getLastElapsedTime() << std::endl;
+
+  talker.clear();
+  t.start();
+  for (size_t i = 0; i < _numTests; ++i)
+  {
+    for (auto& listener : listeners)
+      talker.connectBoostSignalDummyMutex(&listener);
+    talker.clear();
+  }
+  t.stop();
+  std::cout << "Boost.Signal (dummy mutex): " << t.getLastElapsedTime() << std::endl;
+
+  std::cout << std::endl;
+}
+
 TEST(Subscriptions, PerformanceTest)
 {
   const size_t numTests = 1e+5;
 
-  testListeners(numTests, 0);
-  testListeners(numTests, 1e+0);
-  testListeners(numTests, 1e+1);
-  testListeners(numTests, 1e+2);
-  testListeners(numTests, 1e+3);
-  testListeners(numTests, 1e+4);
+  testSendingSignals(numTests, 0);
+  testSendingSignals(numTests, 1e+0);
+  testSendingSignals(numTests, 1e+1);
+  testSendingSignals(numTests, 1e+2);
+  testSendingSignals(numTests, 1e+3);
+
+  testAddRemoveConnections(numTests, 0);
+  testAddRemoveConnections(numTests, 1e+0);
+  testAddRemoveConnections(numTests, 1e+1);
+  testAddRemoveConnections(numTests, 1e+2);
+//  testAddRemoveConnections(numTests, 1e+3);
+
+//  testAddRemoveConnections(2, 2);
 }
 
 TEST(Subscriptions, Notifications)

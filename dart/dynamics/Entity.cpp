@@ -185,6 +185,7 @@ bool Entity::needsVelocityUpdate() const
 void Entity::notifyAccelerationUpdate()
 {
   mNeedAccelerationUpdate = true;
+  mAccelerationChangedSignal.raise(this);
   sendNotification(ACCELERATION_NOTICE);
 }
 
@@ -195,43 +196,37 @@ bool Entity::needsAccelerationUpdate() const
 }
 
 //==============================================================================
-Entity::FrameChnagedConnection Entity::addSlotFrameChanged(
-    const Entity::FrameChnagedSlotType& _slot)
+common::Connection Entity::addSlotFrameChanged(const EntitySlot& _slot)
 {
   return mFrameChangedSignal.connect(_slot);
 }
 
 //==============================================================================
-Entity::NameChnagedConnection Entity::addSlotNameChanged(
-    const Entity::NameChnagedSlotType& _slot)
+common::Connection Entity::addSlotNameChanged(const EntitySlot& _slot)
 {
   return mNameChangedSignal.connect(_slot);
 }
 
 //==============================================================================
-Entity::VisualizationChnagedConnection Entity::addSlotVisualizationChanged(
-    const Entity::VisualizationChnagedSlotType& _slot)
+common::Connection Entity::addSlotVisualizationChanged(const EntitySlot& _slot)
 {
   return mVisualizationChangedSignal.connect(_slot);
 }
 
 //==============================================================================
-Entity::TransformChnagedConnection Entity::addSlotTransformChanged(
-    const Entity::TransformChnagedSlotType& _slot)
+common::Connection Entity::addSlotTransformChanged(const EntitySlot& _slot)
 {
   return mTransformChangedSignal.connect(_slot);
 }
 
 //==============================================================================
-Entity::VelocityChnagedConnection Entity::addSlotVelocityChanged(
-    const Entity::VelocityChnagedSlotType& _slot)
+common::Connection Entity::addSlotVelocityChanged(const EntitySlot& _slot)
 {
   return mVelocityChangedSignal.connect(_slot);
 }
 
 //==============================================================================
-Entity::AccelerationChnagedConnection Entity::addSlotAccelerationChanged(
-    const Entity::AccelerationChnagedSlotType& _slot)
+common::Connection Entity::addSlotAccelerationChanged(const EntitySlot& _slot)
 {
   return mAccelerationChangedSignal.connect(_slot);
 }

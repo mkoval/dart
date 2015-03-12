@@ -141,33 +141,32 @@ public:
   /// Returns true iff an acceleration update is needed for this Entity
   bool needsAccelerationUpdate() const;
 
-  using FrameChnagedSig         = common::Signal<void(Entity*)>;
-  using NameChnagedSig          = common::Signal<void(Entity*)>;
-  using VisualizationChnagedSig = common::Signal<void(Entity*)>;
-  using TransformChnagedSig     = common::Signal<void(Entity*)>;
-  using VelocityChnagedSig      = common::Signal<void(Entity*)>;
-  using AccelerationChnagedSig  = common::Signal<void(Entity*)>;
+  //----------------------------------------------------------------------------
+  /// \{ \name Signals
+  //----------------------------------------------------------------------------
 
-  using FrameChnagedSlotType         = FrameChnagedSig::SlotType;
-  using NameChnagedSlotType          = NameChnagedSig::SlotType;
-  using VisualizationChnagedSlotType = VisualizationChnagedSig::SlotType;
-  using TransformChnagedSlotType     = TransformChnagedSig::SlotType;
-  using VelocityChnagedSlotType      = VelocityChnagedSig::SlotType;
-  using AccelerationChnagedSlotType  = AccelerationChnagedSig::SlotType;
+  using EntitySignal = common::Signal<void(const Entity*)>;
+  using EntitySlot   = EntitySignal::SlotType;
 
-  using FrameChnagedConnection         = FrameChnagedSig::Connection;
-  using NameChnagedConnection          = NameChnagedSig::Connection;
-  using VisualizationChnagedConnection = VisualizationChnagedSig::Connection;
-  using TransformChnagedConnection     = TransformChnagedSig::Connection;
-  using VelocityChnagedConnection      = VelocityChnagedSig::Connection;
-  using AccelerationChnagedConnection  = AccelerationChnagedSig::Connection;
+  /// Add slot to frame changed signal
+  common::Connection addSlotFrameChanged(const EntitySlot& _slot);
 
-  FrameChnagedConnection         addSlotFrameChanged(const FrameChnagedSlotType& _slot);
-  NameChnagedConnection          addSlotNameChanged(const NameChnagedSlotType& _slot);
-  VisualizationChnagedConnection addSlotVisualizationChanged(const VisualizationChnagedSlotType& _slot);
-  TransformChnagedConnection     addSlotTransformChanged(const TransformChnagedSlotType& _slot);
-  VelocityChnagedConnection      addSlotVelocityChanged(const VelocityChnagedSlotType& _slot);
-  AccelerationChnagedConnection  addSlotAccelerationChanged(const AccelerationChnagedSlotType& _slot);
+  /// Add slot to name changed signal
+  common::Connection addSlotNameChanged(const EntitySlot& _slot);
+
+  /// Add slot to visualization changed signal
+  common::Connection addSlotVisualizationChanged(const EntitySlot& _slot);
+
+  /// Add slot to transform changed signal
+  common::Connection addSlotTransformChanged(const EntitySlot& _slot);
+
+  /// Add slot to velocity changed signal
+  common::Connection addSlotVelocityChanged(const EntitySlot& _slot);
+
+  /// Add slot to acceleration changed signal
+  common::Connection addSlotAccelerationChanged(const EntitySlot& _slot);
+
+  /// \}
 
 protected:
   /// Used by derived classes to change their parent frames
@@ -193,12 +192,23 @@ protected:
   /// Does this Entity need an Acceleration update
   mutable bool mNeedAccelerationUpdate;
 
-  FrameChnagedSig mFrameChangedSignal;
-  NameChnagedSig mNameChangedSignal;
-  VisualizationChnagedSig mVisualizationChangedSignal;
-  TransformChnagedSig mTransformChangedSignal;
-  VelocityChnagedSig mVelocityChangedSignal;
-  AccelerationChnagedSig mAccelerationChangedSignal;
+  /// Frame changed signal
+  EntitySignal mFrameChangedSignal;
+
+  /// Name changed signal
+  EntitySignal mNameChangedSignal;
+
+  /// Visualization changed signal
+  EntitySignal mVisualizationChangedSignal;
+
+  /// Transform changed signal
+  EntitySignal mTransformChangedSignal;
+
+  /// Velocity changed signal
+  EntitySignal mVelocityChangedSignal;
+
+  /// Acceleration changed signal
+  EntitySignal mAccelerationChangedSignal;
 
 private:
   /// Whether or not this Entity is set to be quiet
