@@ -1,6 +1,10 @@
 /*
- * Copyright (c) 2010, Georgia Tech Research Corporation
+ * Copyright (c) 2010-2015, Georgia Tech Research Corporation
  * All rights reserved.
+ *
+ * Author(s): Tobias Kunz
+ *            Can Erdogan,
+ *            Michael X. Grey <mxgrey@gatech.edu>
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -35,13 +39,14 @@
 
 /** 
  * @file RRT.h
- * @author Tobias Kunz, Can Erdogan
+ * @author Tobias Kunz, Can Erdogan, Michael X. Grey
  * @date Jan 31, 2013
  * @brief The generic RRT implementation. It can be inherited for modifications to collision
  * checking, sampling and etc.
  */
 
-#pragma once
+#ifndef DART_PLANNING_RRT_
+#define DART_PLANNING_RRT_
 
 #include <vector>
 #include <list>
@@ -63,18 +68,20 @@ namespace dynamics { class Skeleton; }
 namespace planning {
 
 /// The rapidly-expanding random tree implementation
-class RRT {
+class RRT
+{
 public:
 
 	/// To get byte-aligned Eigen vectors
 	EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
 	/// The result of attempting to create a new node to reach a target node
-	typedef enum {
+  enum StepResult
+  {
 		STEP_COLLISION, // Collided with obstacle. No node added.
-		STEP_REACHED,	 // The target node is closer than step size (so reached). No node added.
-		STEP_PROGRESS	 // One node added.
-	} StepResult;
+    STEP_REACHED,	  // The target node is closer than step size (so reached). No node added.
+    STEP_PROGRESS	  // One node added.
+  };
 
 public:
 	// Initialization constants and search variables
@@ -88,7 +95,7 @@ public:
 	/// All visited configs
 	// NOTE We are using pointers for the VectorXd's because flann copies the pointers for the
 	// data points and we give it the copies made in the heap
-	std::vector<const Eigen::VectorXd*> configVector; 	
+  std::vector<const Eigen::VectorXd*> configVector;
 
 public:
 
@@ -165,3 +172,5 @@ protected:
 
 } // namespace planning
 } // namespace dart
+
+#endif // DART_PLANNING_RRT_
