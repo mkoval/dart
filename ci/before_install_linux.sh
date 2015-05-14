@@ -55,6 +55,7 @@ libtinyxml-dev
 libtinyxml2-dev
 liburdfdom-dev
 liburdfdom-headers-dev
+coinor-libipopt-dev
 '
 
 if [ $BUILD_CORE_ONLY = OFF ]; then
