@@ -127,6 +127,13 @@ const std::string& EulerJoint::getStaticType()
 }
 
 //==============================================================================
+bool EulerJoint::isCyclic(size_t _index) const
+{
+  return std::isinf(getPositionLowerLimit(_index))
+      && std::isinf(getPositionUpperLimit(_index));
+}
+
+//==============================================================================
 void EulerJoint::setAxisOrder(EulerJoint::AxisOrder _order, bool _renameDofs)
 {
   mEulerP.mAxisOrder = _order;

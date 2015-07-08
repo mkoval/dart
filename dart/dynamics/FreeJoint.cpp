@@ -152,6 +152,13 @@ const std::string& FreeJoint::getStaticType()
 }
 
 //==============================================================================
+bool FreeJoint::isCyclic(size_t _index) const
+{
+  return _index < 3 && std::isinf(getPositionLowerLimit(_index))
+                    && std::isinf(getPositionUpperLimit(_index));
+}
+
+//==============================================================================
 void FreeJoint::integratePositions(double _dt)
 {
   const Eigen::Vector6d& velocities = getVelocitiesStatic();
