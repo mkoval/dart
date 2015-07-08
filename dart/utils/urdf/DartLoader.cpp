@@ -30,6 +30,22 @@
 namespace dart {
 namespace utils {
 
+DartLoader::DartLoader()
+  : mUriResolutionSignal()
+  , onUriResolution(mUriResolutionSignal)
+{
+  restoreDefaultUriResolvers();
+}
+
+void DartLoader::restoreDefaultUriResolvers()
+{
+  using namespace std::placeholders;
+
+  mUriResolutionSignal.disconnectAll();
+  onUriResolution.connect(std::bind(&DartLoader::resolveRelativePath, this, _1));
+  onUriResolution.connect(std::bind(&DartLoader::resolvePackageURI, this, _1));
+}
+
 void DartLoader::addPackageDirectory(const std::string& _packageName,
                                      const std::string& _packageDirectory)
 {
@@ -158,42 +174,15 @@ simulation::WorldPtr DartLoader::parseWorldString(
 /**
  * @function getFullFilePath
  */
-std::string DartLoader::getFullFilePath(const std::string& _filename) const
+std::string DartLoader::getFullFilePath(const std::string& _filename)
 {
-  std::string fullpath = _filename;
-  size_t scheme = fullpath.find("package://");
-  if(scheme < std::string::npos)
-  {
-    size_t authority_start = scheme+10;
-    size_t authority_end = fullpath.find("/", scheme+10);
-    size_t authority_length = authority_end - authority_start;
-
-    std::map<std::string, std::string>::const_iterator packageDirectory =
-        mPackageDirectories.find(
-          fullpath.substr(authority_start, authority_length));
-
-    if(packageDirectory == mPackageDirectories.end())
-    {
-      dterr << "[DartLoader] Trying to load a URDF that uses package '"
-            << fullpath.substr(scheme, authority_end-scheme)
-            << "' (the full line is '" << fullpath
-            << "'), but we do not know the path to that package directory. "
-            << "Please use addPackageDirectory(~) to allow us to find the "
-            << "package directory.\n";
-      fullpath = "";
-    }
-    else
-    {
-      fullpath.erase(scheme, authority_end);
-      fullpath.insert(scheme, packageDirectory->second);
-    }
+  std::string const resolvedPath = mUriResolutionSignal(_filename);
+  if (resolvedPath.empty()) {
+    dterr << "[DartLoader::getFullFilePath] Failed resolving URI"
+             " '" << _filename << "'. Have you registered an appropriate"
+             " resolution method with the onUriResolution slot?\n";
   }
-  else
-  {
-    fullpath = mRootToSkelPath + fullpath;
-  }
-
-  return fullpath;
+  return resolvedPath;
 }
 
 /**
@@ -590,6 +579,50 @@ dynamics::ShapePtr DartLoader::createShape(const VisualOrCollision* _vizOrCol)
   shape->setLocalTransform(toEigen(_vizOrCol->origin));
   setMaterial(shape, _vizOrCol);
   return shape;
+}
+
+std::string DartLoader::resolvePackageURI(const std::string &_filename) const
+{
+  // TODO: This parsing will break if package:// isn't at the start.
+  std::string fullpath = _filename;
+  size_t scheme = fullpath.find("package://");
+  if(scheme < std::string::npos)
+  {
+    size_t authority_start = scheme+10;
+    size_t authority_end = fullpath.find("/", scheme+10);
+    size_t authority_length = authority_end - authority_start;
+
+    std::map<std::string, std::string>::const_iterator packageDirectory =
+        mPackageDirectories.find(
+          fullpath.substr(authority_start, authority_length));
+
+    if(packageDirectory == mPackageDirectories.end())
+    {
+      dterr << "[DartLoader] Trying to load a URDF that uses package '"
+            << fullpath.substr(scheme, authority_end-scheme)
+            << "' (the full line is '" << fullpath
+            << "'), but we do not know the path to that package directory. "
+            << "Please use addPackageDirectory(~) to allow us to find the "
+            << "package directory.\n";
+      fullpath = "";
+    }
+    else
+    {
+      fullpath.erase(scheme, authority_end);
+      fullpath.insert(scheme, packageDirectory->second);
+    }
+  }
+  else
+    fullpath = "";
+
+  return fullpath;
+}
+
+std::string DartLoader::resolveRelativePath(const std::string &_filename) const
+{
+  // TODO: _filename is a URI, so this doesn't make sense. This is only copied
+  // for backwards compatability and should be removed in a future release.
+  return mRootToSkelPath + _filename;
 }
 
 template dynamics::ShapePtr DartLoader::createShape<urdf::Visual>(const urdf::Visual* _vizOrCol);
