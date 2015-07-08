@@ -11,7 +11,6 @@
 #include <Eigen/Geometry>
 #include <map>
 #include <string>
-#include <type_traits>
 
 #include "dart/common/Signal.h"
 #include "dart/dynamics/Skeleton.h"
@@ -47,48 +46,61 @@ namespace utils {
 namespace detail {
 
 template <class T>
-struct UriResolutionCombiner 
+struct ResourceCombiner 
 {
   typedef T result_type;
-
-  // This is only used for std::string, but a Combiner is passed to Signal as a
-  // template template parameter. Therefore, the class needs to be templated on
-  // the the result type.
-  static_assert(std::is_same<T, std::string>::value,
-    "UriResolutionCombiner only supports std::string values.");
 
   template <typename InputIterator>
   static T process(InputIterator first, InputIterator last)
   {
-    for (InputIterator it = first; it != last; ++it)
-      std::cout << "Value: " << *it << std::endl;
-
     // Find the last element that is non-empty. 
     std::reverse_iterator<InputIterator> rbegin(last), rend(first);
     const auto it = std::find_if(rbegin, rend,
-      [](const T &resolvedPath)
+      [](const T &resourceData)
       {
-        return !resolvedPath.empty();
+        return !!resourceData;
       }
     );
 
     if (it != rend)
       return *it;
     else
-      return ""; // Everything was empty.
+      return T(); // Everything was empty.
   }
 };
 
 } // namespace detail
+
+
+struct MemoryResource {
+    MemoryResource()
+        : mData(nullptr)
+        , mSize(0)
+    {
+    }
+
+    ~MemoryResource()
+    {
+      if(mData)
+        delete mData;
+    }
+
+    std::string mPath;
+    uint8_t *mData;
+    size_t mSize;
+};
+
+typedef std::shared_ptr<MemoryResource> MemoryResourcePtr;
+
 
 /**
  * @class DartLoader
  */
 class DartLoader {
 public:
-    using UriResolutionSignal
-        = common::Signal<std::string (const std::string &),
-                         detail::UriResolutionCombiner>;
+    using ResourceRetrievalSignal
+        = common::Signal<MemoryResourcePtr (const std::string &),
+                         detail::ResourceCombiner>;
 
     DartLoader();
 
@@ -116,7 +128,7 @@ public:
 
     /// Restore the default URI resolver that uses addPackageDirectory(~) to
     /// resolve URIs with the package:// schema. This should only be necessary
-    /// if you modified the onUriResolution slot.
+    /// if you modified the onResourceRetrieval slot.
     void restoreDefaultUriResolvers(); 
 
     /// Parse a file to produce a Skeleton
@@ -138,7 +150,6 @@ private:
     typedef std::shared_ptr<dynamics::BodyNode::Properties> BodyPropPtr;
     typedef std::shared_ptr<dynamics::Joint::Properties> JointPropPtr;
 
-    std::string getFullFilePath(const std::string& _filename);
     void parseWorldToEntityPaths(const std::string& _xml_string);
 
     dart::dynamics::SkeletonPtr modelInterfaceToSkeleton(const urdf::ModelInterface* _model);
@@ -156,14 +167,16 @@ private:
     bool createDartNodeProperties(
         const urdf::Link* _lk, dynamics::BodyNode::Properties *properties);
 
-    std::string resolvePackageURI(const std::string &_filename) const;
-    std::string resolveRelativePath(const std::string &_filename) const;
+    MemoryResourcePtr resolvePackageURI(const std::string &_filename) const;
+    MemoryResourcePtr resolveRelativePath(const std::string &_filename) const;
 
     Eigen::Isometry3d toEigen(const urdf::Pose& _pose);
     Eigen::Vector3d toEigen(const urdf::Vector3& _vector);
-    std::string readFileToString(std::string _xmlFile);
 
-    UriResolutionSignal mUriResolutionSignal;
+    std::string readFileToString(std::string _xmlFile);
+    MemoryResourcePtr readFileToResource(const std::string& _file) const;
+
+    ResourceRetrievalSignal mResourceRetrievalSignal;
     std::map<std::string, std::string> mWorld_To_Entity_Paths;
     std::map<std::string, std::string> mPackageDirectories;
     std::string mRootToSkelPath;
@@ -175,7 +188,7 @@ public:
   //----------------------------------------------------------------------------
 
   /// Slot register for package:// URI resolution.
-  common::SlotRegister<UriResolutionSignal> onUriResolution;
+  common::SlotRegister<ResourceRetrievalSignal> onResourceRetrieval;
 
   /// \}
 };

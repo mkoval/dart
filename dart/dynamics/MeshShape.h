@@ -84,6 +84,9 @@ public:
             bool _default = true) const;
 
   /// \brief
+  static const aiScene* loadMesh(const uint8_t* _data, size_t length);
+
+  /// \brief
   static const aiScene* loadMesh(const std::string& _fileName);
 
   // Documentation inherited.

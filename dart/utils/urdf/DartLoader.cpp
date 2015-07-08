@@ -31,8 +31,8 @@ namespace dart {
 namespace utils {
 
 DartLoader::DartLoader()
-  : mUriResolutionSignal()
-  , onUriResolution(mUriResolutionSignal)
+  : mResourceRetrievalSignal()
+  , onResourceRetrieval(mResourceRetrievalSignal)
 {
   restoreDefaultUriResolvers();
 }
@@ -41,9 +41,9 @@ void DartLoader::restoreDefaultUriResolvers()
 {
   using namespace std::placeholders;
 
-  mUriResolutionSignal.disconnectAll();
-  onUriResolution.connect(std::bind(&DartLoader::resolveRelativePath, this, _1));
-  onUriResolution.connect(std::bind(&DartLoader::resolvePackageURI, this, _1));
+  mResourceRetrievalSignal.disconnectAll();
+  onResourceRetrieval.connect(std::bind(&DartLoader::resolveRelativePath, this, _1));
+  onResourceRetrieval.connect(std::bind(&DartLoader::resolvePackageURI, this, _1));
 }
 
 void DartLoader::addPackageDirectory(const std::string& _packageName,
@@ -169,20 +169,6 @@ simulation::WorldPtr DartLoader::parseWorldString(
   }
 
   return world;
-}
-
-/**
- * @function getFullFilePath
- */
-std::string DartLoader::getFullFilePath(const std::string& _filename)
-{
-  std::string const resolvedPath = mUriResolutionSignal(_filename);
-  if (resolvedPath.empty()) {
-    dterr << "[DartLoader::getFullFilePath] Failed resolving URI"
-             " '" << _filename << "'. Have you registered an appropriate"
-             " resolution method with the onUriResolution slot?\n";
-  }
-  return resolvedPath;
 }
 
 /**
@@ -361,6 +347,39 @@ std::string  DartLoader::readFileToString(std::string _xmlFile) {
   
   return xml_string;
 }
+
+MemoryResourcePtr DartLoader::readFileToResource(const std::string &_file) const
+{
+  std::ifstream stream(_file.c_str(), std::ios::binary);
+  if(!stream.is_open())
+  {
+    dtwarn << "[DartLoader::readFileToResource] Failed to open file '"
+           << _file << "'. Check whether the file exists and has appropriate"
+              " permissions.\n";
+    return nullptr;
+  }
+
+  // Compute the length of the file.
+  std::streampos size = stream.tellg();
+  stream.seekg(0, std::ios::end);
+  size = stream.tellg() - size;
+  stream.seekg(0, std::ios::beg);
+
+  auto const resource = std::make_shared<MemoryResource>();
+  resource->mPath = _file;
+  resource->mSize = size;
+  resource->mData = new uint8_t[size];
+  stream.read(reinterpret_cast<char *>(resource->mData), size);
+
+  if (!stream.good())
+  {
+    dtwarn << "[DartLoader::readFileToResource] Failed to read file '"
+           << _file << "'.\n";
+    return nullptr;
+  }
+  return resource;
+}
+
 
 /**
  * @function createDartJoint
@@ -552,20 +571,27 @@ dynamics::ShapePtr DartLoader::createShape(const VisualOrCollision* _vizOrCol)
   // Mesh
   else if(urdf::Mesh* mesh = dynamic_cast<urdf::Mesh*>(_vizOrCol->geometry.get()))
   {
-    std::string fullPath = getFullFilePath(mesh->filename);
-    if (fullPath.empty())
-    {
-      dtwarn << "[DartLoader::createShape] Skipping URDF mesh with empty"
-                " filename. We are returning a nullptr.\n";
+    const MemoryResourcePtr resource = mResourceRetrievalSignal(mesh->filename);
+    if(!resource) {
+      dterr << "[DartLoader::createShape] Failed to resolve mesh URI '"
+            << mesh->filename << "'. Did you connect a function to"
+               " onResourceRetrieval that supports this URI?\n";
       return nullptr;
     }
 
-    const aiScene* model = dynamics::MeshShape::loadMesh( fullPath );
+    const aiScene* model = dynamics::MeshShape::loadMesh(
+      resource->mData, resource->mSize);
     if(!model)
-      return nullptr; // MeshShape::loadMesh logs a warning
+    {
+      dterr << "[DartLoader::createShape] Failed loading mesh from the data"
+               " retrieved from URI '" << mesh->filename << "'.\n";
+      return nullptr;
+    }
 
+    // TODO: Should we be passing mesh->filename here?
     shape = dynamics::ShapePtr(new dynamics::MeshShape(
-      Eigen::Vector3d(mesh->scale.x, mesh->scale.y, mesh->scale.z), model, fullPath));
+      Eigen::Vector3d(mesh->scale.x, mesh->scale.y, mesh->scale.z), model,
+      mesh->filename));
   }
   // Unknown geometry type
   else
@@ -581,7 +607,7 @@ dynamics::ShapePtr DartLoader::createShape(const VisualOrCollision* _vizOrCol)
   return shape;
 }
 
-std::string DartLoader::resolvePackageURI(const std::string &_filename) const
+MemoryResourcePtr DartLoader::resolvePackageURI(const std::string &_filename) const
 {
   // TODO: This parsing will break if package:// isn't at the start.
   std::string fullpath = _filename;
@@ -615,14 +641,17 @@ std::string DartLoader::resolvePackageURI(const std::string &_filename) const
   else
     fullpath = "";
 
-  return fullpath;
+  if (!fullpath.empty())
+    return readFileToResource(fullpath);
+  else
+    return nullptr;
 }
 
-std::string DartLoader::resolveRelativePath(const std::string &_filename) const
+MemoryResourcePtr DartLoader::resolveRelativePath(const std::string &_filename) const
 {
   // TODO: _filename is a URI, so this doesn't make sense. This is only copied
   // for backwards compatability and should be removed in a future release.
-  return mRootToSkelPath + _filename;
+  return readFileToResource(mRootToSkelPath + _filename);
 }
 
 template dynamics::ShapePtr DartLoader::createShape<urdf::Visual>(const urdf::Visual* _vizOrCol);

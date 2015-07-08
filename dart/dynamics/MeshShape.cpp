@@ -258,6 +258,34 @@ void MeshShape::_updateBoundingBoxDim() {
   mBoundingBoxDim[2] = max_Z - min_Z;
 }
 
+const aiScene* MeshShape::loadMesh(const uint8_t* data, size_t length)
+{
+  aiPropertyStore* propertyStore = aiCreatePropertyStore();
+  // remove points and lines
+  aiSetImportPropertyInteger(propertyStore,
+                             AI_CONFIG_PP_SBP_REMOVE,
+                             aiPrimitiveType_POINT | aiPrimitiveType_LINE);
+
+  const aiScene* scene =
+    aiImportFileFromMemoryWithProperties(
+      reinterpret_cast<const char*>(data), length,
+      aiProcess_GenNormals             |
+      aiProcess_Triangulate            |
+      aiProcess_JoinIdenticalVertices  |
+      aiProcess_SortByPType            |
+      aiProcess_OptimizeMeshes,
+      nullptr, propertyStore);
+
+  aiReleasePropertyStore(propertyStore);
+
+  if(!scene)
+    return nullptr;
+
+  // TODO: Detect if this is a DAE file. If so, apply the same post-processing
+  // as we do below.
+  return scene;
+}
+
 const aiScene* MeshShape::loadMesh(const std::string& _fileName) {
   aiPropertyStore* propertyStore = aiCreatePropertyStore();
   // remove points and lines
@@ -272,13 +300,14 @@ const aiScene* MeshShape::loadMesh(const std::string& _fileName) {
                                    aiProcess_SortByPType            |
                                    aiProcess_OptimizeMeshes,
                                    nullptr, propertyStore);
+  aiReleasePropertyStore(propertyStore);
+
   if(!scene)
   {
     dtwarn << "[MeshShape::loadMesh] Assimp could not load file: '"
            << _fileName << "'.\n";
     return nullptr;
   }
-  aiReleasePropertyStore(propertyStore);
 
   // Assimp rotates collada files such that the up-axis (specified in the
   // collada file) aligns with assimp's y-axis. Here we are reverting this
@@ -290,6 +319,10 @@ const aiScene* MeshShape::loadMesh(const std::string& _fileName) {
     scene->mRootNode->mTransformation = aiMatrix4x4();
   }
   scene = aiApplyPostProcessing(scene, aiProcess_PreTransformVertices);
+
+  // Post-processing with the aiProcess_PreTransformVertices option can not
+  // fail according to the Assimp documentation.
+  assert(scene);
 
   return scene;
 }
