@@ -128,6 +128,13 @@ const std::string& UniversalJoint::getStaticType()
 }
 
 //==============================================================================
+bool UniversalJoint::isCyclic(size_t _index) const
+{
+  return std::isinf(getPositionLowerLimit(_index))
+      && std::isinf(getPositionUpperLimit(_index));
+}
+
+//==============================================================================
 void UniversalJoint::setAxis1(const Eigen::Vector3d& _axis)
 {
   mUniversalP.mAxis[0] = _axis.normalized();

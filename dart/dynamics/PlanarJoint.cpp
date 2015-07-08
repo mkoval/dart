@@ -213,6 +213,13 @@ const std::string& PlanarJoint::getStaticType()
 }
 
 //==============================================================================
+bool PlanarJoint::isCyclic(size_t _index) const
+{
+  return _index == 2 && std::isinf(getPositionLowerLimit(_index))
+                     && std::isinf(getPositionUpperLimit(_index));
+}
+
+//==============================================================================
 void PlanarJoint::setXYPlane(bool _renameDofs)
 {
   mPlanarP.setXYPlane();

@@ -121,6 +121,13 @@ const std::string& RevoluteJoint::getType() const
 }
 
 //==============================================================================
+bool RevoluteJoint::isCyclic(size_t _index) const
+{
+  return std::isinf(getPositionLowerLimit(_index))
+      && std::isinf(getPositionUpperLimit(_index));
+}
+
+//==============================================================================
 const std::string& RevoluteJoint::getStaticType()
 {
   static const std::string name = "RevoluteJoint";
