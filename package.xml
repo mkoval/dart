@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>dart</name>
+  <version>5.0.0</version>
+  <description>Dynamic Animation and Robotics Toolkit</description>
+  <maintainer email="jslee02@gmail.com">Jeongseok Lee</maintainer>
+  <license>BSD</license>
+  <buildtool_depend>cmake</buildtool_depend>
+  <depend>assimp</depend>
+  <depend>eigen</depend>
+  <depend>glut</depend>
+  <depend version_gte="1.8">libflann-dev</depend>
+  <depend>liburdfdom-dev</depend>
+  <depend>libxi-dev</depend>
+  <depend>libxmu-dev</depend>
+  <depend>tinyxml</depend>
+  <export>
+    <build_type>cmake</build_type>
+  </export>
+</package>
