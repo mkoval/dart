@@ -41,9 +41,14 @@ void DartLoader::restoreDefaultUriResolvers()
 {
   using namespace std::placeholders;
 
-  mResourceRetrievalSignal.disconnectAll();
+  clearUriResolvers();
   onResourceRetrieval.connect(std::bind(&DartLoader::resolveRelativePath, this, _1));
   onResourceRetrieval.connect(std::bind(&DartLoader::resolvePackageURI, this, _1));
+}
+
+void DartLoader::clearUriResolvers()
+{
+  mResourceRetrievalSignal.disconnectAll();
 }
 
 void DartLoader::addPackageDirectory(const std::string& _packageName,
@@ -365,7 +370,13 @@ MemoryResourcePtr DartLoader::readFileToResource(const std::string &_file) const
   size = stream.tellg() - size;
   stream.seekg(0, std::ios::beg);
 
-  auto const resource = std::make_shared<MemoryResource>();
+  MemoryResourcePtr resource(new MemoryResource,
+    [](MemoryResource *self)
+    {
+      delete[] self->mData;
+      delete self;
+    }
+  );
   resource->mPath = _file;
   resource->mSize = size;
   resource->mData = new uint8_t[size];

@@ -74,15 +74,10 @@ struct ResourceCombiner
 
 struct MemoryResource {
     MemoryResource()
-        : mData(nullptr)
+        : mPath("")
+        , mData(nullptr)
         , mSize(0)
     {
-    }
-
-    ~MemoryResource()
-    {
-      if(mData)
-        delete mData;
     }
 
     std::string mPath;
@@ -130,6 +125,9 @@ public:
     /// resolve URIs with the package:// schema. This should only be necessary
     /// if you modified the onResourceRetrieval slot.
     void restoreDefaultUriResolvers(); 
+
+    /// Disconnect all URI resolvers.
+    void clearUriResolvers();
 
     /// Parse a file to produce a Skeleton
     dynamics::SkeletonPtr parseSkeleton(const std::string& _urdfFileName);
