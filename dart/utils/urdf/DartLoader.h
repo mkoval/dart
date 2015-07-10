@@ -43,35 +43,6 @@ namespace simulation
 
 namespace utils {
 
-namespace detail {
-
-template <class T>
-struct ResourceCombiner 
-{
-  typedef T result_type;
-
-  template <typename InputIterator>
-  static T process(InputIterator first, InputIterator last)
-  {
-    // Find the last element that is non-empty. 
-    std::reverse_iterator<InputIterator> rbegin(last), rend(first);
-    const auto it = std::find_if(rbegin, rend,
-      [](const T &resourceData)
-      {
-        return !!resourceData;
-      }
-    );
-
-    if (it != rend)
-      return *it;
-    else
-      return T(); // Everything was empty.
-  }
-};
-
-} // namespace detail
-
-
 struct MemoryResource {
     MemoryResource()
         : mData(nullptr)
@@ -81,8 +52,6 @@ struct MemoryResource {
 
     ~MemoryResource()
     {
-      if(mData)
-        delete mData;
     }
 
     std::string mPath;
@@ -91,19 +60,14 @@ struct MemoryResource {
 };
 
 typedef std::shared_ptr<MemoryResource> MemoryResourcePtr;
-
+typedef std::function<MemoryResourcePtr (
+  std::string const &baseUri, std::string const &relativePath)> ResourceLoader;
 
 /**
  * @class DartLoader
  */
 class DartLoader {
 public:
-    using ResourceRetrievalSignal
-        = common::Signal<MemoryResourcePtr (const std::string &),
-                         detail::ResourceCombiner>;
-
-    DartLoader();
-
     /// Specify the directory of a ROS package. In your URDF files, you may see
     /// strings with a package URI pattern such as:
     ///
@@ -126,7 +90,14 @@ public:
     void addPackageDirectory(const std::string& _packageName,
                              const std::string& _packageDirectory);
 
-    /// Restore the default URI resolver that uses addPackageDirectory(~) to
+    /// Register a new resource resolver. This will be called first, before any
+    /// previously registered resource resolvers.
+    void registerResourceLoader(ResourceLoader const &_resourceResolver);
+
+    /// Remove all resource resolvers.
+    void clearResourceLoaders(); 
+
+    /// Restore the default resource resolver that uses addPackageDirectory(~) to
     /// resolve URIs with the package:// schema. This should only be necessary
     /// if you modified the onResourceRetrieval slot.
     void restoreDefaultUriResolvers(); 
@@ -167,6 +138,8 @@ private:
     bool createDartNodeProperties(
         const urdf::Link* _lk, dynamics::BodyNode::Properties *properties);
 
+    MemoryResourcePtr resolveUri(std::string const &baseUri,
+                                 std::string const &relativePath);
     MemoryResourcePtr resolvePackageURI(const std::string &_filename) const;
     MemoryResourcePtr resolveRelativePath(const std::string &_filename) const;
 
@@ -176,21 +149,12 @@ private:
     std::string readFileToString(std::string _xmlFile);
     MemoryResourcePtr readFileToResource(const std::string& _file) const;
 
-    ResourceRetrievalSignal mResourceRetrievalSignal;
     std::map<std::string, std::string> mWorld_To_Entity_Paths;
     std::map<std::string, std::string> mPackageDirectories;
     std::string mRootToSkelPath;
     std::string mRootToWorldPath;
 
-public:
-  //----------------------------------------------------------------------------
-  /// \{ \name Slot registers
-  //----------------------------------------------------------------------------
-
-  /// Slot register for package:// URI resolution.
-  common::SlotRegister<ResourceRetrievalSignal> onResourceRetrieval;
-
-  /// \}
+    std::vector<ResourceLoader> mResourceLoaders;
 };
 
 }

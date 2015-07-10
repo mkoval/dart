@@ -11,6 +11,7 @@
 #include <urdf_parser/urdf_parser.h>
 #include <urdf_world/world.h>
 
+#include "dart/utils/AssimpHelpers.h"
 #include "dart/dynamics/Skeleton.h"
 #include "dart/dynamics/BodyNode.h"
 #include "dart/dynamics/Joint.h"
@@ -30,20 +31,26 @@
 namespace dart {
 namespace utils {
 
-DartLoader::DartLoader()
-  : mResourceRetrievalSignal()
-  , onResourceRetrieval(mResourceRetrievalSignal)
+void DartLoader::registerResourceLoader(
+  ResourceLoader const &_resourceResolver)
 {
-  restoreDefaultUriResolvers();
+  mResourceLoaders.push_back(_resourceResolver);
+}
+
+void DartLoader::clearResourceLoaders()
+{
+  mResourceLoaders.clear();
 }
 
 void DartLoader::restoreDefaultUriResolvers()
 {
   using namespace std::placeholders;
 
-  mResourceRetrievalSignal.disconnectAll();
-  onResourceRetrieval.connect(std::bind(&DartLoader::resolveRelativePath, this, _1));
-  onResourceRetrieval.connect(std::bind(&DartLoader::resolvePackageURI, this, _1));
+  clearResourceLoaders();
+  mResourceLoaders.push_back(
+    std::bind(&DartLoader::resolveRelativePath, this, _1));
+  mResourceLoaders.push_back(
+    std::bind(&DartLoader::resolvePackageURI, this, _1));
 }
 
 void DartLoader::addPackageDirectory(const std::string& _packageName,
@@ -571,7 +578,7 @@ dynamics::ShapePtr DartLoader::createShape(const VisualOrCollision* _vizOrCol)
   // Mesh
   else if(urdf::Mesh* mesh = dynamic_cast<urdf::Mesh*>(_vizOrCol->geometry.get()))
   {
-    const MemoryResourcePtr resource = mResourceRetrievalSignal(mesh->filename);
+    const MemoryResourcePtr resource = resolveUri(mesh->filename, "");
     if(!resource) {
       dterr << "[DartLoader::createShape] Failed to resolve mesh URI '"
             << mesh->filename << "'. Did you connect a function to"
@@ -587,6 +594,9 @@ dynamics::ShapePtr DartLoader::createShape(const VisualOrCollision* _vizOrCol)
                " retrieved from URI '" << mesh->filename << "'.\n";
       return nullptr;
     }
+
+    utils::embedTextures(const_cast<aiScene &>(*model), mesh->filename);
+
 
     // TODO: Should we be passing mesh->filename here?
     shape = dynamics::ShapePtr(new dynamics::MeshShape(
@@ -605,6 +615,21 @@ dynamics::ShapePtr DartLoader::createShape(const VisualOrCollision* _vizOrCol)
   shape->setLocalTransform(toEigen(_vizOrCol->origin));
   setMaterial(shape, _vizOrCol);
   return shape;
+}
+
+MemoryResourcePtr DartLoader::resolveUri(
+  std::string const &_baseUri, std::string const &_relativePath)
+{
+  MemoryResourcePtr resource;
+
+  for (auto it = mResourceLoaders.rbegin();
+       !resource && it != mResourceLoaders.rend();
+       ++it)
+  {
+    resource = (*it)(_baseUri, _relativePath);
+  }
+  
+  return resource;
 }
 
 MemoryResourcePtr DartLoader::resolvePackageURI(const std::string &_filename) const
