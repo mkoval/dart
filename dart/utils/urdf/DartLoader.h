@@ -44,15 +44,7 @@ namespace simulation
 namespace utils {
 
 struct MemoryResource {
-    MemoryResource()
-        : mData(nullptr)
-        , mSize(0)
-    {
-    }
-
-    ~MemoryResource()
-    {
-    }
+    MemoryResource();
 
     std::string mPath;
     uint8_t *mData;

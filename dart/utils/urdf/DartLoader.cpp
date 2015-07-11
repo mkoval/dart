@@ -31,12 +31,18 @@
 namespace dart {
 namespace utils {
 
+MemoryResource::MemoryResource()
+  : mPath("")
+  , mData(nullptr)
+  , mSize(0)
+{
+}
+
 void DartLoader::registerResourceLoader(
   ResourceLoader const &_resourceResolver)
 {
   mResourceLoaders.push_back(_resourceResolver);
 }
-
 void DartLoader::clearResourceLoaders()
 {
   mResourceLoaders.clear();
@@ -595,7 +601,9 @@ dynamics::ShapePtr DartLoader::createShape(const VisualOrCollision* _vizOrCol)
       return nullptr;
     }
 
-    utils::embedTextures(const_cast<aiScene &>(*model), mesh->filename);
+    using namespace std::placeholders;
+    utils::embedTextures(const_cast<aiScene &>(*model), mesh->filename,
+      std::bind(&DartLoader::resolveUri, this, _1, _2));
 
 
     // TODO: Should we be passing mesh->filename here?

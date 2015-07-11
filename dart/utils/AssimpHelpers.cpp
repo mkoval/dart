@@ -102,7 +102,15 @@ static bool getFormatHint(std::string const &texturePath, char *formatHint)
   return true;
 }
 
-bool embedTextures(aiScene &scene, std::string const &scenePath)
+static std::string makeEmbeddedTextureName(int index)
+{
+  std::stringstream ss;
+  ss << '*' << index;
+  return ss.str();
+}
+
+bool embedTextures(aiScene &scene, std::string const &scenePath,
+                   ResourceLoader const &resourceLoader)
 {
   std::vector<TextureEntry> textureEntries;
   getTextures(scene, scenePath, textureEntries);
@@ -120,32 +128,37 @@ bool embedTextures(aiScene &scene, std::string const &scenePath)
     TextureEntry const &entry = textureEntries[i];
     aiTexture*& texture = scene.mTextures[i];
 
-    std::cout << "Processing texture[" << i << "]" << std::endl;
-    std::cout << "path: '" << entry.mPath << "'" << std::endl;
-
-    // TODO: Load the texture.
-    size_t texture_size = 0;
-    uint8_t *texture_data = nullptr;
+    // Load the texture.
+    MemoryResourcePtr const textureResource
+      = resourceLoader(scenePath, entry.mPath);
+    if (!textureResource) {
+      dterr << "[embedTextures] Failed loading texture '"
+            << entry.mPath << "' for mesh '" << scenePath << "'.\n";
+      return false;
+    }
 
     // Create a compressed texture. From the Assimp documentation, this must
     // have: (1) mWidth = 0, (2) mHeight equal to the number of bytes, (3)
     // mData a pointer to a buffer of size mHeight, and (4) the achFormatHint
     // string populated.
     texture = new aiTexture;
-    texture->mHeight = texture_size;
+    texture->mHeight = textureResource->mSize;
     texture->mWidth = 0;
 
     getFormatHint(entry.mPath, texture->achFormatHint);
 
-    texture->pcData = reinterpret_cast<aiTexel *>(new uint8_t[texture_size]);
-    memcpy(texture->pcData, texture_data, texture_size);
+    texture->pcData = reinterpret_cast<aiTexel *>(
+      new uint8_t[textureResource->mSize]);
+    memcpy(texture->pcData, textureResource->mData, textureResource->mSize);
 
-    // TODO: Change the aiMaterials that reference this path to point to
+    // Change the aiMaterials that reference this path to point to the newly
+    // embedded texture.
     aiMesh &mesh = *scene.mMeshes[entry.mMeshIndex];
     aiMaterial &material = *scene.mMaterials[mesh.mMaterialIndex];
 
     aiString embeddedPath;
-    embeddedPath.Set(AI_MAKE_EMBEDDED_TEXNAME(i));
+    embeddedPath.Set(makeEmbeddedTextureName(i));
+
     material.AddProperty(&embeddedPath,
       AI_MATKEY_TEXTURE(entry.mTextureType, entry.mTextureIndex));
   }
