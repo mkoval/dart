@@ -153,7 +153,6 @@ bool PathPlanner<R>::planSingleTreeRrt(dynamics::Skeleton* robot, const std::vec
 
   // Expand the tree until the goal is reached or the max # nodes is passed
   typename R::StepResult result = R::STEP_PROGRESS;
-  double smallestGap = std::numeric_limits<double>::infinity();
   size_t numNodes = start_rrt->getSize();
   while(numNodes <= maxNodes) {
 
