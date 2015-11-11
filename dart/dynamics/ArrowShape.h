@@ -37,6 +37,7 @@
 #ifndef DART_DYNAMICS_ARROWSHAPE_H_
 #define DART_DYNAMICS_ARROWSHAPE_H_
 
+#include <limits>
 #include "dart/dynamics/MeshShape.h"
 
 namespace dart {
@@ -58,7 +59,8 @@ public:
     /// fix the size of the arrow head.
     Properties(double _radius=0.01, double _headRadiusScale=2.0,
                double _headLengthScale=0.15,
-               double _minHeadLength=0,  double _maxHeadLength=INFINITY,
+               double _minHeadLength=0,
+               double _maxHeadLength=std::numeric_limits<double>::infinity(),
                bool _doubleArrow=false);
 
     double mRadius;
